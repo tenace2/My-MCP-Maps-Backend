@@ -9,6 +9,35 @@ dotenv.config({ path: path.resolve(__dirname, '.env.local') });
 const app = express();
 const port = process.env.PORT || 3001;
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function generateContentWithRetry(ai, requestConfig, maxRetries = 3) {
+  let delay = 1000;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await ai.models.generateContent(requestConfig);
+    } catch (error) {
+      const upstreamStatus = Number(error?.status ?? error?.response?.status ?? error?.code);
+      const msg = error?.message || '';
+      const isRetryable =
+        upstreamStatus === 503 ||
+        upstreamStatus === 429 ||
+        upstreamStatus === 500 ||
+        /503|UNAVAILABLE|high demand|temporarily unavailable|overloaded|RESOURCE_EXHAUSTED|rate limit/i.test(msg);
+
+      if (!isRetryable || attempt === maxRetries) {
+        throw error;
+      }
+
+      const jitter = Math.floor(Math.random() * 500);
+      const waitTime = delay + jitter;
+      console.warn(`[Gemini] Attempt ${attempt} failed (${upstreamStatus || 'UNAVAILABLE'}). Retrying in ${waitTime}ms...`);
+      await sleep(waitTime);
+      delay *= 2;
+    }
+  }
+}
+
 // Tracks Gemini call volume per UTC day since AI Studio free-tier keys have no Cloud Console usage view.
 const geminiUsage = { date: '', attempted: 0, success: 0, error: 0 };
 
@@ -84,9 +113,9 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+    const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
     const systemInstruction = `You are a helpful assistant for a map app. Return valid JSON with exactly these keys: "reply", "mapHint", "places", and "debug". "reply" should be a concise conversational answer. "mapHint" should be a short place or search phrase relevant to the user's request, or an empty string if no place is relevant. "places" should contain up to 24 distinct place names or short place descriptions relevant to the request. For broad discovery requests such as "list all museums in the London area", provide a substantial list of notable matching places rather than only the most famous few. Do not invent places, and do not claim the list is literally exhaustive unless you can support that claim. Use the same geographic scope in "mapHint" that you use for "places", such as "museums in London, UK". "debug" should be a short developer-facing summary of how you interpreted the request.`;
-    const response = await ai.models.generateContent({
+    const response = await generateContentWithRetry(ai, {
       model,
       contents: `${systemInstruction}\nUser request: ${prompt}`,
       config: {
@@ -163,13 +192,15 @@ app.post('/api/chat', async (req, res) => {
 
     const status = upstreamStatus === 429 || /429|quota|RESOURCE_EXHAUSTED|rate-limit/i.test(errorMessage)
       ? 429
-      : upstreamStatus === 401 || /unauthorized|api key/i.test(errorMessage)
-        ? 401
-        : upstreamStatus === 403 || /forbidden|permission|authentication/i.test(errorMessage)
-          ? 403
-          : upstreamStatus === 404 || /not found|model/i.test(errorMessage)
-            ? 404
-            : 502;
+      : upstreamStatus === 503 || /503|UNAVAILABLE|high demand|temporarily unavailable|overloaded/i.test(errorMessage)
+        ? 503
+        : upstreamStatus === 401 || /unauthorized|api key/i.test(errorMessage)
+          ? 401
+          : upstreamStatus === 403 || /forbidden|permission|authentication/i.test(errorMessage)
+            ? 403
+            : upstreamStatus === 404 || /model not found|resource not found|NOT_FOUND/i.test(errorMessage)
+              ? 404
+              : 502;
 
     return res.status(status).json({
       error: 'Gemini request failed.',
