@@ -4,6 +4,19 @@ This repository contains the backend API for the My MCP Maps application. It is 
 
 The backend does not render the map. The frontend uses the returned `mapHint` and `places` values to update its map interface.
 
+Notes: 
+A. This project is a Remix derived from the Google AI Studio example Gallery apps, in particular the MCP Maps Basic
+example app.  The Google AI Studio example app run's as a single page with the Gemini API key up on the Google cloud. 
+
+B. In order to re-use the example app I had to export the example app from Google AI Studio to my
+GitHub repository (GitHub sync).
+
+C. Then I opened the repository in VS Code and flogged on the AI chatbot to split the original app into 
+a seperate client and server Workspace project. 
+
+D. From there I pushed the server up Railway (yes, paid $5 bucks a month), which is critical as
+Railway handles the Gemini API key (which was obtained at a free tier from the Google AI Studio).
+
 ## How a request works
 
 1. The frontend sends a `POST /api/chat` request containing a `prompt`.
