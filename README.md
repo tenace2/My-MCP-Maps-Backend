@@ -2,7 +2,7 @@
 
 This repository contains the backend API for the My MCP Maps application. It is a small Node.js and Express server that accepts a user's map-related question, sends it to Google's Gemini API, and returns a structured response for the frontend.
 
-The backend does not render the map. The frontend uses the returned `mapHint` and `places` values to update its map interface.
+The backend does not render the map. The frontend uses the returned `mapHint`, `mapMode`, and `places` values to update its map interface.
 
 Notes: 
 A. This project is a Remix derived from the Google AI Studio example Gallery apps, in particular the MCP Maps Basic
@@ -22,9 +22,9 @@ Railway handles the Gemini API key (which was obtained at a free tier from the G
 1. The frontend sends a `POST /api/chat` request containing a `prompt`.
 2. The backend checks that the prompt is a non-empty string and that `GEMINI_API_KEY` is configured.
 3. The backend sends the prompt to the configured Gemini model.
-4. Gemini is instructed to return JSON with `reply`, `mapHint`, `places`, and `debug` fields.
+4. Gemini is instructed to return JSON with `reply`, `mapHint`, `mapMode`, `places`, and `debug` fields.
 5. The backend validates those fields before returning the response.
-6. The frontend displays the reply and uses `mapHint` to perform a map search.
+6. The frontend displays the reply and uses `mapHint` and `mapMode` to update the map.
 
 ## Requirements
 
@@ -138,6 +138,7 @@ Successful response:
 {
   "reply": "Here are some museums to explore in London.",
   "mapHint": "museums in London, UK",
+  "mapMode": "search",
   "places": [
     "The British Museum",
     "Victoria and Albert Museum"
@@ -159,6 +160,7 @@ The response fields are:
 
 - `reply`: conversational text for the user.
 - `mapHint`: a search phrase the frontend can send to its map interface. It may be an empty string when no map location is relevant.
+- `mapMode`: `place` when the request is about one specific named place (`mapHint` is then a fully qualified place name), or `search` for lists and categories of places. The frontend maps these to the Google Maps Embed `place` and `search` modes.
 - `places`: an array of place names or short descriptions, limited to 24 entries.
 - `debug`: a short developer-facing description of how the request was interpreted.
 - `model`: the model reported by the Gemini response, or the configured model name.

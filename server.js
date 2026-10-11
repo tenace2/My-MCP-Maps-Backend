@@ -114,7 +114,7 @@ app.post('/api/chat', async (req, res) => {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
-    const systemInstruction = `You are a helpful assistant for a map app. Return valid JSON with exactly these keys: "reply", "mapHint", "places", and "debug". "reply" should be a concise conversational answer. "mapHint" should be a short place or search phrase relevant to the user's request, or an empty string if no place is relevant. "places" should contain up to 24 distinct place names or short place descriptions relevant to the request. For broad discovery requests such as "list all museums in the London area", provide a substantial list of notable matching places rather than only the most famous few. Do not invent places, and do not claim the list is literally exhaustive unless you can support that claim. Use the same geographic scope in "mapHint" that you use for "places", such as "museums in London, UK". "debug" should be a short developer-facing summary of how you interpreted the request.`;
+    const systemInstruction = `You are a helpful assistant for a map app. Return valid JSON with exactly these keys: "reply", "mapHint", "mapMode", "places", and "debug". "mapMode" must be "place" when the user is asking about one specific named place (then "mapHint" must be that place with city, state and country, e.g. "Boynton Canyon, Sedona, AZ, USA"), or "search" when they want a list or category of places. "reply" should be a concise conversational answer. "mapHint" should be a short place or search phrase relevant to the user's request, or an empty string if no place is relevant. "places" should contain up to 24 distinct place names or short place descriptions relevant to the request. For broad discovery requests such as "list all museums in the London area", provide a substantial list of notable matching places rather than only the most famous few. Do not invent places, and do not claim the list is literally exhaustive unless you can support that claim. Use the same geographic scope in "mapHint" that you use for "places", such as "museums in London, UK". "debug" should be a short developer-facing summary of how you interpreted the request.`;
     const response = await generateContentWithRetry(ai, {
       model,
       contents: `${systemInstruction}\nUser request: ${prompt}`,
@@ -125,6 +125,7 @@ app.post('/api/chat', async (req, res) => {
           properties: {
             reply: { type: 'string' },
             mapHint: { type: 'string' },
+            mapMode: { type: 'string', enum: ['place', 'search'] },
             places: {
               type: 'array',
               items: { type: 'string' },
@@ -132,7 +133,7 @@ app.post('/api/chat', async (req, res) => {
             },
             debug: { type: 'string' },
           },
-          required: ['reply', 'mapHint', 'places', 'debug'],
+          required: ['reply', 'mapHint', 'mapMode', 'places', 'debug'],
         },
       },
     });
@@ -161,6 +162,7 @@ app.post('/api/chat', async (req, res) => {
       return res.json({
         reply: parsed.reply,
         mapHint: parsed.mapHint.trim(),
+        mapMode: parsed.mapMode === 'place' ? 'place' : 'search',
         places: parsed.places.filter(Boolean).slice(0, 24),
         debug: parsed.debug,
         model: modelName,
